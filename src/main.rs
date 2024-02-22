@@ -1,3 +1,13 @@
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+struct Config {
+    #[arg(short, long)]
+    file: String,
+}
+
 fn main() {
-    println!("Hello, world!");
+    let cfg = Config::parse();
+
+    println!("{:?}", cfg);
 }
