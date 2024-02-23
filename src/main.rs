@@ -1,13 +1,19 @@
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-struct Config {
+struct Args {
+    #[arg(short, long)]
+    dir: String,
+
     #[arg(short, long)]
     file: String,
+
+    #[arg(short, long, value_delimiter = ',')]
+    extensions: Vec<String>
 }
 
 fn main() {
-    let cfg = Config::parse();
+    let args = Args::parse();
 
-    println!("{:?}", cfg);
+    println!("{:?}", args);
 }
