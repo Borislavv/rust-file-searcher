@@ -1,11 +1,12 @@
-use std::error::Error;
-use std::string::ToString;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::mpsc::Sender;
 use clap::Parser;
 
-const ROOT_DIR: String = "/".to_string();
+const ROOT_DIR: &str = "/";
 
 #[derive(Parser, Debug)]
-struct Args {
+struct Config {
     /// Directory in which the search will be performed
     #[arg(short, long)]
     dir: String,
@@ -19,18 +20,44 @@ struct Args {
     extensions: Vec<String>
 }
 
-fn main() {
-    let args = parse_args();
+#[tokio::main]
+async fn main() {
+    let cfg = &Arc::new(match parse_args() {
+        Ok(cfg) => cfg,
+        Err(err) => panic!("{}", err)
+    });
 
-    println!("{:?}", args);
-}
+    let (sender, mut receiver) = std::sync::mpsc::channel::<&str>();
 
-fn parse_args() -> Result<Args, dyn Error> {
-    let mut args = Args::parse();
+    let mut find_handle = tokio::spawn(find(sender, cfg).await?);
 
-    if args.dir.is_empty() {
-        args.dir = ROOT_DIR
+    let mut i = 1;
+    for path in receiver.iter() {
+        println!("#{}: {}\n", i, path);
+        i += 1;
     }
 
-    return Ok(args);
+    find_handle.await?;
+
+    println!("{:?}", cfg);
+}
+
+fn parse_args() -> Result<Config, &'static str> {
+    let mut cfg = Config::parse();
+
+    if cfg.dir.is_empty() {
+        cfg.dir = ROOT_DIR.to_string()
+    }
+
+    if cfg.file.is_empty() {
+        return Err("file cannot be empty or omitted");
+    }
+
+    return Ok(cfg);
+}
+
+async fn find(ch: Sender<&str>, cfg: &Arc<Config>)  {
+    for entry in std::fs::read_dir(cfg.dir.clone()).unwrap() {
+        let dir = entry.unwrap().;
+    }
 }
