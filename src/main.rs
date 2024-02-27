@@ -1,109 +1,49 @@
+use tokio::signal;
+use tokio::sync::mpsc;
+use walkdir::WalkDir;
+use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender};
-use clap::Parser;
-use tokio::join;
-
-const ROOT_DIR: &str = "/";
-
-#[derive(Parser, Debug)]
-struct Config {
-    /// Directory in which the search will be performed
-    #[arg(short, long)]
-    dir: String,
-
-    /// Target file name for search
-    #[arg(short, long)]
-    file: String,
-}
 
 #[tokio::main]
 async fn main() {
-    let cfg = &Arc::new(match parse_args() {
-        Ok(cfg) => cfg,
-        Err(err) => panic!("{}", err)
-    });
-
-    let file = cfg.file.clone();
-    let dir  = cfg.dir.clone();
-
-    let (file_tx, file_rx) = std::sync::mpsc::channel::<String>();
-    let (err_tx, err_rx) = std::sync::mpsc::channel::<String>();
-
-    let files_handle  = tokio::spawn(print_files(file_rx));
-    let errors_handle = tokio::spawn(print_errors(err_rx));
-    let find_handle   = tokio::spawn(find(file_tx, err_tx, file, dir));
-
-    join!(find_handle, files_handle, errors_handle);
-}
-
-async fn print_files(files_rx: Receiver<String>) {
-    let mut i = 1;
-    for f in files_rx.iter() {
-        println!("#{}: {}", i, f);
-        i += 1;
-    }
-}
-
-async fn print_errors(errors_rx: Receiver<String>) {
-    for e in errors_rx.iter() {
-        println!("error: {}", e);
-    }
-}
-
-fn parse_args() -> Result<Config, String> {
-    let mut cfg = Config::parse();
-
-    if cfg.dir.is_empty() {
-        cfg.dir = ROOT_DIR.to_string()
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 {
+        eprintln!("Usage: {} <directory> <filename>", args[0]);
+        return;
     }
 
-    if cfg.file.is_empty() {
-        return Err("file cannot be empty or omitted".to_string());
-    }
+    let directory = args[1].clone();
+    let filename = Arc::new(args[2].clone());
 
-    return Ok(cfg);
-}
+    let (tx, mut rx) = mpsc::channel(100);
 
-async fn find(file_tx: Sender<String>, err_tx: Sender<String>, file: String, dir: String)  {
-    let dir_entries = match std::fs::read_dir(dir.as_str()) {
-        Ok(dir_entries) => dir_entries,
-        Err(err) => {
-            err_tx.send(err.to_string());
-            return;
-        }
-    };
+    let dir_path = PathBuf::from(directory);
+    let file_name = filename.clone();
 
-    dir_entries.for_each(|entry| {
-        let dir_entry = match entry {
-            Ok(dir_entry) => dir_entry,
-            Err(err) => {
-                err_tx.send(err.to_string());
-                return;
-            }
-        };
-
-        if dir_entry.file_name().to_str().unwrap() == &*file {
-            file_tx.send(format!(
-                "{}/{}", dir, dir_entry.file_name().to_os_string().to_str().unwrap()
-            ));
-        }
-
-        if dir_entry.path().is_dir() {
-            let mut into_dir: String;
-            if dir_entry.path().to_str().unwrap_or("/") == "/" {
-                into_dir = "/".to_string();
-            } else {
-                into_dir = format!(
-                    "{}/{}", dir, dir_entry.path().to_str().unwrap().to_string()
-                )
-            }
-
-            let file_tx_cloned = file_tx.clone();
-            let err_tx_cloned = err_tx.clone();
-            let file_cloned = file.clone();
-            let dir_cloned = dir.clone();
-
-            tokio::spawn(find(file_tx_cloned, err_tx_cloned, file_cloned, dir_cloned));
+    tokio::spawn(async move {
+        for entry in WalkDir::new(dir_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy() == *file_name)
+        {
+            let path = entry.path().to_path_buf();
+            tx.send(path).await.expect("failed to send path");
         }
     });
+
+    let ctrl_c = signal::ctrl_c();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            println!("Received Ctrl-C, stopping");
+        },
+        _ = receive_files(&mut rx) => {},
+    }
+}
+
+async fn receive_files(rx: &mut mpsc::Receiver<PathBuf>) {
+    while let Some(path) = rx.recv().await {
+        println!("Found file: {}", path.display());
+    }
 }
