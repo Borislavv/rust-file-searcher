@@ -4,9 +4,12 @@ use walkdir::WalkDir;
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 #[tokio::main]
 async fn main() {
+    let start = Instant::now();
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 {
         eprintln!("Usage: {} <directory> <filename>", args[0]);
@@ -40,10 +43,14 @@ async fn main() {
         },
         _ = receive_files(&mut rx) => {},
     }
+
+    println!("Elapsed: {:?}", start.elapsed());
 }
 
 async fn receive_files(rx: &mut mpsc::Receiver<PathBuf>) {
+    let mut i = 1;
     while let Some(path) = rx.recv().await {
-        println!("Found file: {}", path.display());
+        println!("#{}: {}", i, path.display());
+        i += 1;
     }
 }
