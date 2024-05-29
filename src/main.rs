@@ -142,7 +142,6 @@ fn search_files(
         }
 
         deferred.fetch_add(1, Ordering::SeqCst);
-        active.fetch_sub(1, Ordering::SeqCst);
     })
 }
 
