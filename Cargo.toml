@@ -8,3 +8,6 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1.36.0", features = ["full"] }
 walkdir = "2"
+scan_dir = "0.3.3"
+regex = "1.10.4"
+anyhow = "1.0.86"
