@@ -9,7 +9,7 @@ use regex::Regex;
 use anyhow::Error;
 use std::pin::Pin;
 use std::future::Future;
-use std::os::unix::fs::{PermissionsExt, FileTypeExt}; // Импортируем нужные расширения
+use std::os::unix::fs::{PermissionsExt, FileTypeExt};
 
 #[tokio::main]
 async fn main() {
